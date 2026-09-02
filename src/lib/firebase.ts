@@ -133,3 +133,7 @@ export function storageBucketName() {
 
 /** Goals, their rules, and the days they were ticked. */
 export const GOALS_COLLECTION = process.env.FIREBASE_GOALS_COLLECTION || "goals";
+
+/** Single document holding the dashboard's tunable settings. */
+export const SETTINGS_COLLECTION =
+  process.env.FIREBASE_SETTINGS_COLLECTION || "settings";

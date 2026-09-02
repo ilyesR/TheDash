@@ -13,6 +13,7 @@ import {
   Pencil,
   ChevronLeft,
   ChevronRight,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import AppSidebar from "@/components/ui/app-sidebar";
@@ -20,13 +21,16 @@ import { cn } from "@/lib/utils";
 import type { Goal } from "@/lib/goal";
 import {
   addDays,
+  band,
   countInWeek,
-  dayState,
+  dayRate,
+  DEFAULT_THRESHOLDS,
   today,
   weekDays,
+  weekRate,
   weekStart,
-  weekState,
 } from "@/lib/goal";
+import type { Thresholds } from "@/lib/goal";
 
 const FIELD =
   "w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-[13px] text-white outline-none placeholder:text-white/30 focus:border-neutral-500";
@@ -48,15 +52,27 @@ export default function GoalsView() {
 
   /** The day being ticked. Defaults to today, but any past day can be fixed up. */
   const [selected, setSelected] = React.useState(now);
+  const [thresholds, setThresholds] = React.useState<Thresholds>(DEFAULT_THRESHOLDS);
+  const [tuning, setTuning] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/goals");
-        const payload = await res.json();
-        if (!res.ok) throw new Error(payload?.error ?? "Could not load your goals.");
-        if (!cancelled) setGoals(payload.goals as Goal[]);
+        const [goalsRes, settingsRes] = await Promise.all([
+          fetch("/api/goals"),
+          fetch("/api/settings"),
+        ]);
+        const payload = await goalsRes.json();
+        if (!goalsRes.ok) throw new Error(payload?.error ?? "Could not load your goals.");
+
+        const settings = await settingsRes.json().catch(() => null);
+        if (!cancelled) {
+          setGoals(payload.goals as Goal[]);
+          // Falling back to the defaults keeps the calendars readable even if
+          // the settings document is missing.
+          if (settingsRes.ok && settings?.thresholds) setThresholds(settings.thresholds);
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Could not load your goals.");
@@ -147,14 +163,25 @@ export default function GoalsView() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setEditing("new")}
-            className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[13px] font-medium text-black transition-colors hover:bg-white/90"
-          >
-            <Plus size={15} />
-            <span className="hidden sm:inline">New goal</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setTuning((v) => !v)}
+              aria-expanded={tuning}
+              className="flex items-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-900/70 px-3 py-2 text-[13px] text-white/60 transition-colors hover:text-white"
+            >
+              <SlidersHorizontal size={15} />
+              <span className="hidden sm:inline">Thresholds</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing("new")}
+              className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[13px] font-medium text-black transition-colors hover:bg-white/90"
+            >
+              <Plus size={15} />
+              <span className="hidden sm:inline">New goal</span>
+            </button>
+          </div>
         </header>
 
         <main className="flex flex-col gap-4 px-6 pb-10">
@@ -165,6 +192,14 @@ export default function GoalsView() {
             >
               {error}
             </p>
+          )}
+
+          {tuning && (
+            <ThresholdsPanel
+              thresholds={thresholds}
+              onChange={setThresholds}
+              onError={setError}
+            />
           )}
 
           {loading ? (
@@ -210,8 +245,9 @@ export default function GoalsView() {
                   today={now}
                   selected={selected}
                   onSelect={setSelected}
+                  thresholds={thresholds}
                 />
-                <WeeklyCalendar goals={published} today={now} />
+                <WeeklyCalendar goals={published} today={now} thresholds={thresholds} />
               </div>
             </>
           )}
@@ -474,11 +510,13 @@ function DailyCalendar({
   today: now,
   selected,
   onSelect,
+  thresholds,
 }: {
   goals: Goal[];
   today: string;
   selected: string;
   onSelect: (date: string) => void;
+  thresholds: Thresholds;
 }) {
   const weeks = React.useMemo(() => {
     const currentMonday = weekStart(now);
@@ -491,8 +529,9 @@ function DailyCalendar({
     <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
       <h2 className="mb-1 text-sm font-semibold text-white">Daily</h2>
       <p className="mb-4 text-[11px] text-white/40">
-Only today is scored. Every elapsed day shows black — the weekly calendar is
-        where the past gets its verdict. Click any day to fix it up.
+Coloured by the share of that day&apos;s goals you ticked, against the
+        thresholds you set. Black means nothing was running yet. Click a day to fix
+        it up.
       </p>
 
       <div className="flex flex-col gap-1">
@@ -514,8 +553,10 @@ Only today is scored. Every elapsed day shows black — the weekly calendar is
               {days[0].slice(5)}
             </span>
             {days.map((date) => {
-              const state = dayState(goals, date, now);
-              const ticked = goals.filter((g) => g.checkIns.includes(date)).length;
+              const future = date > now;
+              const rate = future ? null : dayRate(goals, date);
+              const tone =
+                rate === null ? null : band(rate, thresholds.dayRed, thresholds.dayOrange);
 
               return (
                 <button
@@ -523,14 +564,16 @@ Only today is scored. Every elapsed day shows black — the weekly calendar is
                   type="button"
                   onClick={() => onSelect(date)}
                   disabled={date > now}
-                  title={`${date} — ${ticked} of ${goals.length} ticked`}
+                  title={rate === null ? date : `${date} — ${rate}% done`}
                   aria-label={`Show ${date}`}
                   className={cn(
                     "size-6 rounded transition-transform enabled:hover:scale-110",
-                    state === "done" && "bg-emerald-500/70",
-                    state === "past" && "bg-black",
-                    state === "future" && "bg-neutral-800/40",
-                    state === "empty" && "bg-neutral-800",
+                    tone === "green" && "bg-emerald-500/70",
+                    tone === "orange" && "bg-orange-500/70",
+                    tone === "red" && "bg-red-500/60",
+                    // Nothing was running that day, so there is no rate to show.
+                    rate === null && !future && "bg-black",
+                    future && "bg-neutral-800/40",
                     date === now && "ring-1 ring-white/40",
                     date === selected && "ring-2 ring-white"
                   )}
@@ -544,7 +587,15 @@ Only today is scored. Every elapsed day shows black — the weekly calendar is
   );
 }
 
-function WeeklyCalendar({ goals, today: now }: { goals: Goal[]; today: string }) {
+function WeeklyCalendar({
+  goals,
+  today: now,
+  thresholds,
+}: {
+  goals: Goal[];
+  today: string;
+  thresholds: Thresholds;
+}) {
   const weeks = React.useMemo(() => {
     const currentMonday = weekStart(now);
     return Array.from({ length: WEEKS_BACK }, (_, i) =>
@@ -556,12 +607,15 @@ function WeeklyCalendar({ goals, today: now }: { goals: Goal[]; today: string })
     <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
       <h2 className="mb-1 text-sm font-semibold text-white">Weekly</h2>
       <p className="mb-4 text-[11px] text-white/40">
-        Green only when every published goal reached its own weekly target.
+        Coloured by how much of the week&apos;s targets you met. Each goal counts up
+        to its own target, so overshooting one cannot cover for missing another.
       </p>
 
       <ul className="flex flex-col">
         {[...weeks].reverse().map((monday) => {
-          const state = weekState(goals, monday, now);
+          const rate = weekRate(goals, monday);
+          const tone =
+            rate === null ? null : band(rate, thresholds.weekRed, thresholds.weekOrange);
           const hit = goals.filter((g) => countInWeek(g, monday) >= g.timesPerWeek).length;
 
           return (
@@ -572,10 +626,10 @@ function WeeklyCalendar({ goals, today: now }: { goals: Goal[]; today: string })
               <span
                 className={cn(
                   "size-3 shrink-0 rounded-full",
-                  state === "done" && "bg-emerald-500",
-                  state === "missed" && "bg-red-500/70",
-                  state === "running" && "bg-amber-400",
-                  state === "empty" && "bg-neutral-700"
+                  tone === "green" && "bg-emerald-500",
+                  tone === "orange" && "bg-orange-500",
+                  tone === "red" && "bg-red-500/70",
+                  tone === null && "bg-neutral-700"
                 )}
               />
               <span className="text-[12px] text-white/70">
@@ -585,7 +639,7 @@ function WeeklyCalendar({ goals, today: now }: { goals: Goal[]; today: string })
                 )}
               </span>
               <span className="ml-auto text-[11px] tabular-nums text-white/40">
-                {hit}/{goals.length} goals
+                {rate === null ? "—" : `${rate}%`} · {hit}/{goals.length} goals
               </span>
             </li>
           );
@@ -817,5 +871,111 @@ function GoalDialog({
         </div>
       </div>
     </div>
+  );
+}
+
+function ThresholdsPanel({
+  thresholds,
+  onChange,
+  onError,
+}: {
+  thresholds: Thresholds;
+  onChange: (next: Thresholds) => void;
+  onError: (message: string) => void;
+}) {
+  const [draft, setDraft] = React.useState(thresholds);
+  const [saving, setSaving] = React.useState(false);
+
+  const dirty =
+    draft.dayRed !== thresholds.dayRed ||
+    draft.dayOrange !== thresholds.dayOrange ||
+    draft.weekRed !== thresholds.weekRed ||
+    draft.weekOrange !== thresholds.weekOrange;
+
+  async function save() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload?.error ?? "Could not save your thresholds.");
+      onChange(payload.thresholds as Thresholds);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Could not save your thresholds.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const rows = [
+    { label: "Daily", red: "dayRed", orange: "dayOrange" },
+    { label: "Weekly", red: "weekRed", orange: "weekOrange" },
+  ] as const;
+
+  return (
+    <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-white">Thresholds</h2>
+        {dirty && (
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving}
+            className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[12px] font-medium text-black transition-colors hover:bg-white/90 disabled:opacity-50"
+          >
+            {saving && <Loader2 size={12} className="animate-spin" />}
+            Save
+          </button>
+        )}
+      </div>
+      <p className="mb-4 text-[11px] text-white/40">
+        Below the first number is red, up to the second is orange, above it is green.
+      </p>
+
+      <div className="flex flex-col gap-4">
+        {rows.map(({ label, red, orange }) => (
+          <div key={label} className="flex flex-wrap items-center gap-3">
+            <span className="w-16 shrink-0 text-[12px] text-white/60">{label}</span>
+
+            <label className="flex items-center gap-2">
+              <span className="text-[11px] text-red-400">red below</span>
+              <input
+                value={draft[red]}
+                onChange={(e) =>
+                  setDraft({ ...draft, [red]: Number(e.target.value) || 0 })
+                }
+                type="number"
+                min="0"
+                max="100"
+                aria-label={`${label} red threshold`}
+                className="w-16 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-[12px] tabular-nums text-white outline-none focus:border-neutral-500"
+              />
+              <span className="text-[11px] text-white/30">%</span>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <span className="text-[11px] text-orange-400">orange up to</span>
+              <input
+                value={draft[orange]}
+                onChange={(e) =>
+                  setDraft({ ...draft, [orange]: Number(e.target.value) || 0 })
+                }
+                type="number"
+                min="0"
+                max="100"
+                aria-label={`${label} orange threshold`}
+                className="w-16 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-[12px] tabular-nums text-white outline-none focus:border-neutral-500"
+              />
+              <span className="text-[11px] text-white/30">%</span>
+            </label>
+
+            <span className="text-[11px] text-emerald-400">green above</span>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }

@@ -97,3 +97,68 @@ export function weekState(goals: Goal[], date: string, todayDate = today()): Wee
   // The running week has not had its chance yet; do not mark it failed.
   return start === currentStart ? "running" : "missed";
 }
+
+
+// ------------------------------------------------------------------ scoring
+
+/**
+ * Where a completion rate turns from red to orange to green. Percentages, and
+ * yours to set: what counts as a good week is not something an app decides.
+ */
+export type Thresholds = {
+  dayRed: number;
+  dayOrange: number;
+  weekRed: number;
+  weekOrange: number;
+};
+
+export const DEFAULT_THRESHOLDS: Thresholds = {
+  dayRed: 50,
+  dayOrange: 80,
+  weekRed: 50,
+  weekOrange: 80,
+};
+
+export type Band = "red" | "orange" | "green";
+
+export function band(rate: number, below: number, upTo: number): Band {
+  if (rate < below) return "red";
+  if (rate <= upTo) return "orange";
+  return "green";
+}
+
+/** Goals already running on that day; nothing else can be expected of it. */
+function liveOn(goals: Goal[], date: string) {
+  return goals.filter((g) => g.startedOn <= date);
+}
+
+/**
+ * Share of that day's goals you ticked, as a percentage. Returns null when
+ * nothing was running yet — a day with no goals has no rate, not a bad one.
+ */
+export function dayRate(goals: Goal[], date: string): number | null {
+  const live = liveOn(goals, date);
+  if (live.length === 0) return null;
+
+  const ticked = live.filter((g) => g.checkIns.includes(date)).length;
+  return Math.round((ticked / live.length) * 100);
+}
+
+/**
+ * Share of the week's targets you met. Each goal contributes its own progress
+ * capped at its target, so overshooting one cannot paper over missing another.
+ */
+export function weekRate(goals: Goal[], date: string): number | null {
+  const start = weekStart(date);
+  const live = goals.filter((g) => weekStart(g.startedOn) <= start);
+  if (live.length === 0) return null;
+
+  let done = 0;
+  let required = 0;
+  for (const goal of live) {
+    done += Math.min(countInWeek(goal, start), goal.timesPerWeek);
+    required += goal.timesPerWeek;
+  }
+
+  return required === 0 ? null : Math.round((done / required) * 100);
+}
