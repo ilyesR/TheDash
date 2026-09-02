@@ -11,6 +11,8 @@ import {
   Trash2,
   Send,
   Pencil,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 import AppSidebar from "@/components/ui/app-sidebar";
@@ -44,6 +46,9 @@ export default function GoalsView() {
 
   const now = today();
 
+  /** The day being ticked. Defaults to today, but any past day can be fixed up. */
+  const [selected, setSelected] = React.useState(now);
+
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -69,15 +74,15 @@ export default function GoalsView() {
   const published = React.useMemo(() => goals.filter((g) => g.published), [goals]);
   const drafts = React.useMemo(() => goals.filter((g) => !g.published), [goals]);
 
-  async function toggleToday(goal: Goal) {
-    const done = !goal.checkIns.includes(now);
+  async function toggleDay(goal: Goal) {
+    const done = !goal.checkIns.includes(selected);
     setBusy(goal.id);
     setError(null);
     try {
       const res = await fetch(`/api/goals/${goal.id}/check`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: now, done }),
+        body: JSON.stringify({ date: selected, done }),
       });
       const payload = await res.json();
       if (!res.ok) throw new Error(payload?.error ?? "Could not save.");
@@ -178,13 +183,15 @@ export default function GoalsView() {
             </div>
           ) : (
             <>
-              <TodayPanel
+              <DayPanel
                 goals={published}
+                date={selected}
                 today={now}
                 busy={busy}
-                onToggle={toggleToday}
+                onToggle={toggleDay}
                 onEdit={setEditing}
                 onDelete={remove}
+                onDateChange={setSelected}
               />
 
               {drafts.length > 0 && (
@@ -198,7 +205,12 @@ export default function GoalsView() {
               )}
 
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                <DailyCalendar goals={published} today={now} />
+                <DailyCalendar
+                  goals={published}
+                  today={now}
+                  selected={selected}
+                  onSelect={setSelected}
+                />
                 <WeeklyCalendar goals={published} today={now} />
               </div>
             </>
@@ -222,27 +234,75 @@ export default function GoalsView() {
   );
 }
 
-function TodayPanel({
+function DayPanel({
   goals,
-  today: now,
+  date: now,
+  today: realToday,
   busy,
   onToggle,
   onEdit,
   onDelete,
+  onDateChange,
 }: {
   goals: Goal[];
+  date: string;
   today: string;
   busy: string | null;
   onToggle: (g: Goal) => void;
   onEdit: (g: Goal) => void;
   onDelete: (g: Goal) => void;
+  onDateChange: (next: string) => void;
 }) {
   const allDone = goals.length > 0 && goals.every((g) => g.checkIns.includes(now));
+  const isToday = now === realToday;
+
+  const heading = isToday
+    ? "Today"
+    : new Date(`${now}T00:00:00Z`).toLocaleDateString("en-GB", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        timeZone: "UTC",
+      });
 
   return (
     <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-white">Today</h2>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onDateChange(addDays(now, -1))}
+            aria-label="Previous day"
+            className="rounded-md p-1 text-white/45 transition-colors hover:text-white"
+          >
+            <ChevronLeft size={16} />
+          </button>
+
+          <h2 className="min-w-[150px] text-center text-sm font-semibold text-white">
+            {heading}
+          </h2>
+
+          <button
+            type="button"
+            onClick={() => onDateChange(addDays(now, 1))}
+            // Ticking a day that has not happened yet would be a lie.
+            disabled={isToday}
+            aria-label="Next day"
+            className="rounded-md p-1 text-white/45 transition-colors hover:text-white disabled:opacity-25"
+          >
+            <ChevronRight size={16} />
+          </button>
+
+          {!isToday && (
+            <button
+              type="button"
+              onClick={() => onDateChange(realToday)}
+              className="ml-1 rounded-md border border-neutral-700 px-2 py-1 text-[11px] text-white/60 transition-colors hover:text-white"
+            >
+              Back to today
+            </button>
+          )}
+        </div>
         <span
           className={cn(
             "rounded-md border px-2 py-1 text-[11px]",
@@ -263,8 +323,6 @@ function TodayPanel({
         <ul className="flex flex-col">
           {goals.map((goal) => {
             const ticked = goal.checkIns.includes(now);
-            const count = countInWeek(goal, now);
-            const hit = count >= goal.timesPerWeek;
 
             return (
               <li
@@ -276,7 +334,7 @@ function TodayPanel({
                   onClick={() => onToggle(goal)}
                   disabled={busy !== null}
                   aria-pressed={ticked}
-                  aria-label={`${ticked ? "Untick" : "Tick"} ${goal.title} for today`}
+                  aria-label={`${ticked ? "Untick" : "Tick"} ${goal.title} for ${now}`}
                   className={cn(
                     "mt-0.5 grid size-6 shrink-0 place-items-center rounded-md border transition-colors disabled:opacity-40",
                     ticked
@@ -310,18 +368,6 @@ function TodayPanel({
                       ))}
                     </ul>
                   )}
-                </span>
-
-                <span
-                  className={cn(
-                    "mt-0.5 shrink-0 rounded-md border px-2 py-1 text-[11px] tabular-nums",
-                    hit
-                      ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                      : "border-amber-500/30 bg-amber-500/10 text-amber-300"
-                  )}
-                  title="This week's progress"
-                >
-                  {count}/{goal.timesPerWeek} this week
                 </span>
 
                 <span className="mt-0.5 flex shrink-0 items-center gap-1">
@@ -423,7 +469,17 @@ function DraftsPanel({
 }
 
 /** Monday-first grid, oldest week at the top, one row per week. */
-function DailyCalendar({ goals, today: now }: { goals: Goal[]; today: string }) {
+function DailyCalendar({
+  goals,
+  today: now,
+  selected,
+  onSelect,
+}: {
+  goals: Goal[];
+  today: string;
+  selected: string;
+  onSelect: (date: string) => void;
+}) {
   const weeks = React.useMemo(() => {
     const currentMonday = weekStart(now);
     return Array.from({ length: WEEKS_BACK }, (_, i) =>
@@ -436,7 +492,7 @@ function DailyCalendar({ goals, today: now }: { goals: Goal[]; today: string }) 
       <h2 className="mb-1 text-sm font-semibold text-white">Daily</h2>
       <p className="mb-4 text-[11px] text-white/40">
         Green when you ticked at least one goal that day, red when a past day went by
-        with none.
+        with none. Click a day to fix it up.
       </p>
 
       <div className="flex flex-col gap-1">
@@ -462,16 +518,21 @@ function DailyCalendar({ goals, today: now }: { goals: Goal[]; today: string }) 
               const ticked = goals.filter((g) => g.checkIns.includes(date)).length;
 
               return (
-                <span
+                <button
                   key={date}
+                  type="button"
+                  onClick={() => onSelect(date)}
+                  disabled={date > now}
                   title={`${date} — ${ticked} of ${goals.length} ticked`}
+                  aria-label={`Show ${date}`}
                   className={cn(
-                    "size-6 rounded",
+                    "size-6 rounded transition-transform enabled:hover:scale-110",
                     state === "done" && "bg-emerald-500/70",
                     state === "missed" && "bg-red-500/40",
                     state === "future" && "bg-neutral-800/40",
                     state === "empty" && "bg-neutral-800",
-                    date === now && "ring-1 ring-white/40"
+                    date === now && "ring-1 ring-white/40",
+                    date === selected && "ring-2 ring-white"
                   )}
                 />
               );
