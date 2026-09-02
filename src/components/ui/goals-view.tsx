@@ -491,8 +491,9 @@ function DailyCalendar({
     <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
       <h2 className="mb-1 text-sm font-semibold text-white">Daily</h2>
       <p className="mb-4 text-[11px] text-white/40">
-        Green when you ticked at least one goal that day, red when a past day went by
-        with none. Click a day to fix it up.
+Only this week is scored: green when you ticked something, red when a day went
+        by with none. Earlier days are settled history — the weekly calendar
+        judges those. Click any day to fix it up.
       </p>
 
       <div className="flex flex-col gap-1">
@@ -529,6 +530,7 @@ function DailyCalendar({
                     "size-6 rounded transition-transform enabled:hover:scale-110",
                     state === "done" && "bg-emerald-500/70",
                     state === "missed" && "bg-red-500/40",
+                    state === "past" && "bg-black",
                     state === "future" && "bg-neutral-800/40",
                     state === "empty" && "bg-neutral-800",
                     date === now && "ring-1 ring-white/40",

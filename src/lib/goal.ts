@@ -56,16 +56,21 @@ export function hitTargetThatWeek(goal: Goal, date: string) {
   return countInWeek(goal, date) >= goal.timesPerWeek;
 }
 
-export type DayState = "done" | "missed" | "future" | "empty";
+export type DayState = "done" | "missed" | "future" | "past" | "empty";
 
 /**
- * A day is green as soon as something was ticked on it, red when a past day
- * went by with nothing. Weekly targets say nothing about *which* days, so a
- * stricter daily rule would invent a schedule you never set.
+ * Only the running week is judged. Anything before this Monday is settled
+ * history and shows neutral — the weekly calendar is where past weeks get
+ * their verdict, so colouring them here twice would just add noise.
+ *
+ * Inside the week: green once something was ticked, red for a day that went by
+ * with nothing. Weekly targets say nothing about *which* days, so a stricter
+ * daily rule would invent a schedule you never set.
  */
 export function dayState(goals: Goal[], date: string, todayDate = today()): DayState {
-  if (goals.length === 0) return "empty";
   if (date > todayDate) return "future";
+  if (date < weekStart(todayDate)) return "past";
+  if (goals.length === 0) return "empty";
 
   // Only goals already running that day have any say over its colour.
   const live = goals.filter((g) => g.startedOn <= date);
