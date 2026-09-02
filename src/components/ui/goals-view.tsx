@@ -690,11 +690,9 @@ function GoalDialog({
   const [timesPerWeek, setTimesPerWeek] = React.useState(goal?.timesPerWeek ?? 3);
   const [rules, setRules] = React.useState<string[]>(goal?.rules ?? []);
   const [rule, setRule] = React.useState("");
-  // Scoring runs by the week, so tracking starts on a Monday whatever day you
-  // pick. A goal you have been at for a month can say so.
-  const [startedOn, setStartedOn] = React.useState(
-    weekStart(goal?.startedOn ?? today())
-  );
+  // The exact day you pick, not the Monday of its week: nothing before it is
+  // counted, so picking Tuesday must leave Monday alone.
+  const [startedOn, setStartedOn] = React.useState(goal?.startedOn ?? today());
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -817,15 +815,12 @@ function GoalDialog({
               type="date"
               value={startedOn}
               max={today()}
-              onChange={(e) =>
-                // Any day you pick means the week it belongs to.
-                setStartedOn(e.target.value ? weekStart(e.target.value) : weekStart(today()))
-              }
+              onChange={(e) => setStartedOn(e.target.value || today())}
               className={cn(FIELD, "[color-scheme:dark]")}
             />
             <span className="text-[11px] text-white/30">
-              Week of {startedOn}. Earlier weeks are left out of the scoring — a
-              goal you started today has not failed the ones before it.
+              Nothing before this day is counted. Its own week asks only for the
+              days that were left, so starting mid-week is not a hole in it.
             </span>
           </label>
 

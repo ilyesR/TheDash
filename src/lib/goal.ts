@@ -142,13 +142,28 @@ export function liveOn(goals: Goal[], date: string) {
   return goals.filter((g) => effectiveStart(g) <= date);
 }
 
+/** Days of that week the goal was actually running. */
+function daysAvailable(goal: Goal, date: string) {
+  const start = effectiveStart(goal);
+  return weekDays(date).filter((day) => day >= start).length;
+}
+
+/**
+ * Boxes the week asks of this goal. A goal that started on the Tuesday cannot
+ * be asked for seven days it never had, so its first week shrinks to fit.
+ */
+export function boxesFor(goal: Goal, date: string) {
+  return Math.min(goal.timesPerWeek, daysAvailable(goal, date));
+}
+
 /**
  * Days you may skip a goal in a week without owing anything. A target of five
  * out of seven is a promise to show up five times, not seven — the other two
- * are rest days you chose when you set the target.
+ * are rest days you chose when you set the target. A part-week has fewer days
+ * to spare, so it grants fewer.
  */
-export function allowedSkips(goal: Goal) {
-  return 7 - goal.timesPerWeek;
+export function allowedSkips(goal: Goal, date: string) {
+  return Math.max(0, daysAvailable(goal, date) - goal.timesPerWeek);
 }
 
 export type DayVerdict =
@@ -180,7 +195,7 @@ export function dayVerdict(goal: Goal, date: string): DayVerdict {
     if (!goal.checkIns.includes(day)) skipped += 1;
   }
 
-  return skipped <= allowedSkips(goal) ? "excused" : "missed";
+  return skipped <= allowedSkips(goal, date) ? "excused" : "missed";
 }
 
 /**
@@ -215,8 +230,9 @@ export function weekPoints(goals: Goal[], date: string) {
   let points = 0;
   let boxes = 0;
   for (const goal of live) {
-    points += Math.min(countInWeek(goal, start), goal.timesPerWeek);
-    boxes += goal.timesPerWeek;
+    const asked = boxesFor(goal, start);
+    points += Math.min(countInWeek(goal, start), asked);
+    boxes += asked;
   }
 
   return { points, boxes };
