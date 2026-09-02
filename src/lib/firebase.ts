@@ -130,3 +130,6 @@ export function storageBucketName() {
     `${process.env.FIREBASE_PROJECT_ID || "thedash-bbc30"}.firebasestorage.app`
   );
 }
+
+/** Goals, their rules, and the days they were ticked. */
+export const GOALS_COLLECTION = process.env.FIREBASE_GOALS_COLLECTION || "goals";
