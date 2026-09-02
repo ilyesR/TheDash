@@ -138,37 +138,92 @@ export function effectiveStart(goal: Goal) {
 }
 
 /** Goals already running on that day; nothing else can be expected of it. */
-function liveOn(goals: Goal[], date: string) {
+export function liveOn(goals: Goal[], date: string) {
   return goals.filter((g) => effectiveStart(g) <= date);
 }
 
 /**
- * Share of that day's goals you ticked, as a percentage. Returns null when
- * nothing was running yet — a day with no goals has no rate, not a bad one.
+ * Days you may skip a goal in a week without owing anything. A target of five
+ * out of seven is a promise to show up five times, not seven — the other two
+ * are rest days you chose when you set the target.
  */
-export function dayRate(goals: Goal[], date: string): number | null {
-  const live = liveOn(goals, date);
-  if (live.length === 0) return null;
+export function allowedSkips(goal: Goal) {
+  return 7 - goal.timesPerWeek;
+}
 
-  const ticked = live.filter((g) => g.checkIns.includes(date)).length;
-  return Math.round((ticked / live.length) * 100);
+export type DayVerdict =
+  /** Ticked. */
+  | "done"
+  /** Not ticked, and the week's skips are spent — this one is owed. */
+  | "missed"
+  /** Not ticked, but still within the week's skips. */
+  | "excused"
+  /** The goal was not running yet. */
+  | "off";
+
+/**
+ * What one goal makes of one day. Skips are spent in date order, so an early
+ * miss is free and the same miss later in the week is not: with five out of
+ * seven, skipping Tuesday and Thursday costs nothing, and Friday is the one
+ * that counts.
+ */
+export function dayVerdict(goal: Goal, date: string): DayVerdict {
+  const start = effectiveStart(goal);
+  if (start > date) return "off";
+  if (goal.checkIns.includes(date)) return "done";
+
+  // Days before the goal existed are not skips it chose to take.
+  let skipped = 0;
+  for (const day of weekDays(date)) {
+    if (day > date) break;
+    if (day < start) continue;
+    if (!goal.checkIns.includes(day)) skipped += 1;
+  }
+
+  return skipped <= allowedSkips(goal) ? "excused" : "missed";
 }
 
 /**
- * Share of the week's targets you met. Each goal contributes its own progress
- * capped at its target, so overshooting one cannot paper over missing another.
+ * Share of what that day actually owed you that you delivered. Excused skips
+ * leave the sum entirely rather than counting against you, so returns null for
+ * a day that owed nothing — no goal running, or every one of them resting.
  */
-export function weekRate(goals: Goal[], date: string): number | null {
-  const start = weekStart(date);
-  const live = goals.filter((g) => weekStart(effectiveStart(g)) <= start);
-  if (live.length === 0) return null;
-
+export function dayRate(goals: Goal[], date: string): number | null {
   let done = 0;
-  let required = 0;
-  for (const goal of live) {
-    done += Math.min(countInWeek(goal, start), goal.timesPerWeek);
-    required += goal.timesPerWeek;
+  let owed = 0;
+
+  for (const goal of goals) {
+    const verdict = dayVerdict(goal, date);
+    if (verdict === "done") done += 1;
+    if (verdict === "done" || verdict === "missed") owed += 1;
   }
 
-  return required === 0 ? null : Math.round((done / required) * 100);
+  return owed === 0 ? null : Math.round((done / owed) * 100);
+}
+
+/**
+ * The week scored as points: every box the week asks you to tick is one point.
+ * Gym 5× and No Smoking 7× make twelve boxes, and eleven ticks is 92%.
+ *
+ * A goal is capped at its own target, because there is no thirteenth box: a
+ * sixth gym session cannot buy back a cigarette.
+ */
+export function weekPoints(goals: Goal[], date: string) {
+  const start = weekStart(date);
+  const live = goals.filter((g) => weekStart(effectiveStart(g)) <= start);
+
+  let points = 0;
+  let boxes = 0;
+  for (const goal of live) {
+    points += Math.min(countInWeek(goal, start), goal.timesPerWeek);
+    boxes += goal.timesPerWeek;
+  }
+
+  return { points, boxes };
+}
+
+/** That points total as a percentage, or null for a week that asked nothing. */
+export function weekRate(goals: Goal[], date: string): number | null {
+  const { points, boxes } = weekPoints(goals, date);
+  return boxes === 0 ? null : Math.round((points / boxes) * 100);
 }

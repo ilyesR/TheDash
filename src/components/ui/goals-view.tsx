@@ -22,11 +22,12 @@ import type { Goal } from "@/lib/goal";
 import {
   addDays,
   band,
-  countInWeek,
   dayRate,
   DEFAULT_THRESHOLDS,
+  liveOn,
   today,
   weekDays,
+  weekPoints,
   weekRate,
   weekStart,
 } from "@/lib/goal";
@@ -529,10 +530,11 @@ function DailyCalendar({
     <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
       <h2 className="mb-1 text-sm font-semibold text-white">Daily</h2>
       <p className="mb-4 text-[11px] text-white/40">
-Coloured by the share of that day&apos;s goals you ticked, against the
-        thresholds you set. Only finished days are scored — today stays neutral
-        until it is over. Black means nothing was running yet. Click a day to fix
-        it up.
+Coloured by the share of what the day owed you that you delivered, against
+        the thresholds you set. A goal set to 5×/week may be skipped twice before
+        a miss counts — earlier skips leave the sum instead of dragging it down.
+        Only finished days are scored; grey is a day that owed nothing, black a
+        day before any goal existed. Click a day to fix it up.
       </p>
 
       <div className="flex flex-col gap-1">
@@ -562,6 +564,9 @@ Coloured by the share of that day&apos;s goals you ticked, against the
                 over && rate !== null
                   ? band(rate, thresholds.dayRed, thresholds.dayOrange)
                   : null;
+              // A day that owed nothing because every goal was resting is not
+              // the same as a day before any goal existed.
+              const rest = rate === null && liveOn(goals, date).length > 0;
 
               return (
                 <button
@@ -571,9 +576,13 @@ Coloured by the share of that day&apos;s goals you ticked, against the
                   disabled={date > now}
                   title={
                     // A day that has not arrived has no progress worth quoting.
-                    rate === null || date > now
+                    date > now
                       ? date
-                      : `${date} — ${rate}%${over ? " done" : " so far"}`
+                      : rate !== null
+                        ? `${date} — ${rate}%${over ? " done" : " so far"}`
+                        : rest
+                          ? `${date} — rest day, within your weekly skips`
+                          : date
                   }
                   aria-label={`Show ${date}`}
                   className={cn(
@@ -581,8 +590,10 @@ Coloured by the share of that day&apos;s goals you ticked, against the
                     tone === "green" && "bg-emerald-500/70",
                     tone === "orange" && "bg-orange-500/70",
                     tone === "red" && "bg-red-500/60",
-                    // Nothing was running that day, so there is no rate to show.
-                    over && rate === null && "bg-black",
+                    // Owed nothing: resting reads lighter than a day before any
+                    // goal existed, which stays black.
+                    over && rest && "bg-neutral-600/50",
+                    over && rate === null && !rest && "bg-black",
                     !over && "bg-neutral-800/40",
                     date === now && "ring-1 ring-white/40",
                     date === selected && "ring-2 ring-white"
@@ -617,9 +628,10 @@ function WeeklyCalendar({
     <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
       <h2 className="mb-1 text-sm font-semibold text-white">Weekly</h2>
       <p className="mb-4 text-[11px] text-white/40">
-        Coloured by how much of the week&apos;s targets you met, once the week is
-        over. Each goal counts up to its own target, so overshooting one cannot
-        cover for missing another.
+        One point per box the week asks you to tick — gym 5× and no smoking 7×
+        make twelve — coloured by the percentage once the week is over. A goal
+        stops at its own target, so a sixth gym session cannot cover a missed
+        one elsewhere.
       </p>
 
       <ul className="flex flex-col">
@@ -632,7 +644,7 @@ function WeeklyCalendar({
             over && rate !== null
               ? band(rate, thresholds.weekRed, thresholds.weekOrange)
               : null;
-          const hit = goals.filter((g) => countInWeek(g, monday) >= g.timesPerWeek).length;
+          const { points, boxes } = weekPoints(goals, monday);
 
           return (
             <li
@@ -655,7 +667,7 @@ function WeeklyCalendar({
                 )}
               </span>
               <span className="ml-auto text-[11px] tabular-nums text-white/40">
-                {rate === null ? "—" : `${rate}%`} · {hit}/{goals.length} goals
+                {rate === null ? "—" : `${rate}%`} · {points}/{boxes} pts
               </span>
             </li>
           );
@@ -678,6 +690,11 @@ function GoalDialog({
   const [timesPerWeek, setTimesPerWeek] = React.useState(goal?.timesPerWeek ?? 3);
   const [rules, setRules] = React.useState<string[]>(goal?.rules ?? []);
   const [rule, setRule] = React.useState("");
+  // Scoring runs by the week, so tracking starts on a Monday whatever day you
+  // pick. A goal you have been at for a month can say so.
+  const [startedOn, setStartedOn] = React.useState(
+    weekStart(goal?.startedOn ?? today())
+  );
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -715,7 +732,7 @@ function GoalDialog({
         // Publishing is one-way here: an already published goal stays published.
         published: publishNow || (goal?.published ?? false),
         checkIns: goal?.checkIns ?? [],
-        startedOn: goal?.startedOn ?? today(),
+        startedOn,
       };
 
       const res = await fetch(goal ? `/api/goals/${goal.id}` : "/api/goals", {
@@ -793,6 +810,24 @@ function GoalDialog({
               ))}
             </div>
           </div>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[12px] text-white/50">Counts from</span>
+            <input
+              type="date"
+              value={startedOn}
+              max={today()}
+              onChange={(e) =>
+                // Any day you pick means the week it belongs to.
+                setStartedOn(e.target.value ? weekStart(e.target.value) : weekStart(today()))
+              }
+              className={cn(FIELD, "[color-scheme:dark]")}
+            />
+            <span className="text-[11px] text-white/30">
+              Week of {startedOn}. Earlier weeks are left out of the scoring — a
+              goal you started today has not failed the ones before it.
+            </span>
+          </label>
 
           <div className="flex flex-col gap-1.5">
             <span className="text-[12px] text-white/50">Rules (optional)</span>
