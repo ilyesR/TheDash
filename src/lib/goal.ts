@@ -127,9 +127,19 @@ export function band(rate: number, below: number, upTo: number): Band {
   return "green";
 }
 
+/**
+ * The day a goal actually began counting. Ticking a day earlier than
+ * `startedOn` says it was already running then, and a day you ticked must never
+ * be treated as one where nothing was expected of you.
+ */
+export function effectiveStart(goal: Goal) {
+  const first = goal.checkIns[0];
+  return first && first < goal.startedOn ? first : goal.startedOn;
+}
+
 /** Goals already running on that day; nothing else can be expected of it. */
 function liveOn(goals: Goal[], date: string) {
-  return goals.filter((g) => g.startedOn <= date);
+  return goals.filter((g) => effectiveStart(g) <= date);
 }
 
 /**
@@ -150,7 +160,7 @@ export function dayRate(goals: Goal[], date: string): number | null {
  */
 export function weekRate(goals: Goal[], date: string): number | null {
   const start = weekStart(date);
-  const live = goals.filter((g) => weekStart(g.startedOn) <= start);
+  const live = goals.filter((g) => weekStart(effectiveStart(g)) <= start);
   if (live.length === 0) return null;
 
   let done = 0;

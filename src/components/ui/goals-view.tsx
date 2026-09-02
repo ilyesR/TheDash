@@ -530,7 +530,8 @@ function DailyCalendar({
       <h2 className="mb-1 text-sm font-semibold text-white">Daily</h2>
       <p className="mb-4 text-[11px] text-white/40">
 Coloured by the share of that day&apos;s goals you ticked, against the
-        thresholds you set. Black means nothing was running yet. Click a day to fix
+        thresholds you set. Only finished days are scored — today stays neutral
+        until it is over. Black means nothing was running yet. Click a day to fix
         it up.
       </p>
 
@@ -553,10 +554,14 @@ Coloured by the share of that day&apos;s goals you ticked, against the
               {days[0].slice(5)}
             </span>
             {days.map((date) => {
-              const future = date > now;
-              const rate = future ? null : dayRate(goals, date);
+              // A day still running has not had its chance yet, so it carries no
+              // verdict: today stays neutral until it is over.
+              const over = date < now;
+              const rate = dayRate(goals, date);
               const tone =
-                rate === null ? null : band(rate, thresholds.dayRed, thresholds.dayOrange);
+                over && rate !== null
+                  ? band(rate, thresholds.dayRed, thresholds.dayOrange)
+                  : null;
 
               return (
                 <button
@@ -564,7 +569,12 @@ Coloured by the share of that day&apos;s goals you ticked, against the
                   type="button"
                   onClick={() => onSelect(date)}
                   disabled={date > now}
-                  title={rate === null ? date : `${date} — ${rate}% done`}
+                  title={
+                    // A day that has not arrived has no progress worth quoting.
+                    rate === null || date > now
+                      ? date
+                      : `${date} — ${rate}%${over ? " done" : " so far"}`
+                  }
                   aria-label={`Show ${date}`}
                   className={cn(
                     "size-6 rounded transition-transform enabled:hover:scale-110",
@@ -572,8 +582,8 @@ Coloured by the share of that day&apos;s goals you ticked, against the
                     tone === "orange" && "bg-orange-500/70",
                     tone === "red" && "bg-red-500/60",
                     // Nothing was running that day, so there is no rate to show.
-                    rate === null && !future && "bg-black",
-                    future && "bg-neutral-800/40",
+                    over && rate === null && "bg-black",
+                    !over && "bg-neutral-800/40",
                     date === now && "ring-1 ring-white/40",
                     date === selected && "ring-2 ring-white"
                   )}
@@ -607,15 +617,21 @@ function WeeklyCalendar({
     <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
       <h2 className="mb-1 text-sm font-semibold text-white">Weekly</h2>
       <p className="mb-4 text-[11px] text-white/40">
-        Coloured by how much of the week&apos;s targets you met. Each goal counts up
-        to its own target, so overshooting one cannot cover for missing another.
+        Coloured by how much of the week&apos;s targets you met, once the week is
+        over. Each goal counts up to its own target, so overshooting one cannot
+        cover for missing another.
       </p>
 
       <ul className="flex flex-col">
         {[...weeks].reverse().map((monday) => {
+          // Same rule as the daily grid: the running week is still yours to
+          // finish, so it gets no verdict until it is over.
+          const over = monday < weekStart(now);
           const rate = weekRate(goals, monday);
           const tone =
-            rate === null ? null : band(rate, thresholds.weekRed, thresholds.weekOrange);
+            over && rate !== null
+              ? band(rate, thresholds.weekRed, thresholds.weekOrange)
+              : null;
           const hit = goals.filter((g) => countInWeek(g, monday) >= g.timesPerWeek).length;
 
           return (
