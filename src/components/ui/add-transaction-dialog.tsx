@@ -142,6 +142,28 @@ export default function AddTransactionDialog({
   const [amount, setAmount] = React.useState("");
   const [category, setCategory] = React.useState<string>(EXPENSE_CATEGORIES[0]);
   const [manualCurrency, setManualCurrency] = React.useState<SupportedCurrency>("EUR");
+  /** How many people the bill is split between; 1 means it is all yours. */
+  const [manualSplit, setManualSplit] = React.useState(1);
+  const [manualParticipants, setManualParticipants] = React.useState<Participant[]>([]);
+
+  /** The amount typed is the whole bill; your share is derived from it. */
+  const manualTotal = Number(amount) || 0;
+  const manualShare = Math.round((manualTotal / manualSplit) * 100) / 100;
+
+  function adjustManualSplit(delta: number) {
+    setManualSplit((ways) => {
+      const next = Math.min(Math.max(ways + delta, 1), 50);
+      // One name slot per other person; shrinking drops the trailing slots so
+      // names already typed keep their place.
+      setManualParticipants((people) =>
+        Array.from(
+          { length: next - 1 },
+          (_, i): Participant => people[i] ?? { name: "", settled: false }
+        )
+      );
+      return next;
+    });
+  }
 
   const labelRef = React.useRef<HTMLInputElement>(null);
   React.useEffect(() => labelRef.current?.focus(), []);
@@ -436,12 +458,13 @@ export default function AddTransactionDialog({
         label: label.trim(),
         // The server recomputes this from originalAmount when the currency is
         // not EUR, so the stored euro value always uses one agreed rate.
-        amount: Number(amount),
+        // Both are your share: what you owe, not what the table owed.
+        amount: manualShare,
         currency: manualCurrency,
-        originalAmount: Number(amount),
+        originalAmount: manualShare,
         convertFromOriginal: manualCurrency !== "EUR",
-        splitWays: 1,
-        participants: [],
+        splitWays: manualSplit,
+        participants: manualParticipants.filter((p) => p.name.trim() !== ""),
         type,
         category,
       });
@@ -896,6 +919,98 @@ export default function AddTransactionDialog({
               onCurrencyChange={setManualCurrency}
               fieldClassName={FIELD}
             />
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[12px] text-white/50">Split the bill</span>
+
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    "flex items-center gap-1 rounded-lg border px-2 py-1.5 text-[13px] transition-colors",
+                    manualSplit > 1
+                      ? "border-violet-500/40 bg-violet-500/15 text-violet-200"
+                      : "border-neutral-700 bg-neutral-900 text-white/50"
+                  )}
+                >
+                  <Users size={13} />
+                  <button
+                    type="button"
+                    onClick={() => adjustManualSplit(-1)}
+                    disabled={manualSplit <= 1}
+                    aria-label="Fewer people"
+                    className="px-1.5 leading-none transition-opacity hover:text-white disabled:opacity-30"
+                  >
+                    −
+                  </button>
+                  <span className="tabular-nums">{manualSplit}</span>
+                  <button
+                    type="button"
+                    onClick={() => adjustManualSplit(1)}
+                    aria-label="More people"
+                    className="px-1.5 leading-none transition-opacity hover:text-white"
+                  >
+                    +
+                  </button>
+                </span>
+
+                <span className="text-[11px] text-white/35">
+                  {manualSplit === 1
+                    ? "All yours."
+                    : `Your share: ${manualShare.toFixed(2)} of ${manualTotal.toFixed(2)} ${manualCurrency}.`}
+                </span>
+              </div>
+
+              {manualSplit > 1 && (
+                <div className="mt-1 flex flex-col gap-1.5">
+                  <span className="text-[11px] text-white/35">
+                    Who paid with you? Each owes {manualShare.toFixed(2)}{" "}
+                    {manualCurrency}.
+                  </span>
+                  {manualParticipants.map((person, i) => (
+                    <span key={i} className="flex items-center gap-2">
+                      <input
+                        value={person.name}
+                        onChange={(e) =>
+                          setManualParticipants((people) =>
+                            people.map((p, j) =>
+                              j === i ? { ...p, name: e.target.value } : p
+                            )
+                          )
+                        }
+                        placeholder={`Person ${i + 1}`}
+                        maxLength={60}
+                        aria-label={`Name of person ${i + 1}`}
+                        className={cn(FIELD, "flex-1 py-1.5 text-[12px]")}
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setManualParticipants((people) =>
+                            people.map((p, j) =>
+                              j === i ? { ...p, settled: !p.settled } : p
+                            )
+                          )
+                        }
+                        disabled={person.name.trim() === ""}
+                        aria-pressed={person.settled}
+                        className={cn(
+                          "shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] transition-colors disabled:opacity-40",
+                          person.settled
+                            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+                            : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                        )}
+                      >
+                        {person.settled ? "paid me back" : "still owes me"}
+                      </button>
+                    </span>
+                  ))}
+                  <span className="text-[11px] text-white/25">
+                    Leave a name blank to skip it. Anyone still owing you shows up
+                    on the Pay back tab.
+                  </span>
+                </div>
+              )}
+            </div>
 
             <label className="flex flex-col gap-1.5">
               <span className="text-[12px] text-white/50">Date</span>
