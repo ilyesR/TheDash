@@ -220,7 +220,10 @@ export default function GoalsView() {
           ) : (
             <>
               <DayPanel
-                goals={published}
+                // Only what was actually running that day is tickable: a goal
+                // set to start next Monday has nothing to say about today.
+                goals={liveOn(published, selected)}
+                pending={published.length - liveOn(published, selected).length}
                 date={selected}
                 today={now}
                 busy={busy}
@@ -273,6 +276,7 @@ export default function GoalsView() {
 
 function DayPanel({
   goals,
+  pending,
   date: now,
   today: realToday,
   busy,
@@ -282,6 +286,8 @@ function DayPanel({
   onDateChange,
 }: {
   goals: Goal[];
+  /** Published goals not running on this day, so the list cannot look empty. */
+  pending: number;
   date: string;
   today: string;
   busy: string | null;
@@ -354,7 +360,9 @@ function DayPanel({
 
       {goals.length === 0 ? (
         <p className="py-4 text-center text-[12px] text-white/35">
-          Nothing published yet — publish a goal to start ticking.
+          {pending > 0
+            ? `Nothing running on this day — ${pending} ${pending === 1 ? "goal starts" : "goals start"} later.`
+            : "Nothing published yet — publish a goal to start ticking."}
         </p>
       ) : (
         <ul className="flex flex-col">
@@ -429,6 +437,13 @@ function DayPanel({
             );
           })}
         </ul>
+      )}
+
+      {goals.length > 0 && pending > 0 && (
+        <p className="mt-3 text-[11px] text-white/25">
+          {pending} more {pending === 1 ? "goal was" : "goals were"} not running
+          on this day.
+        </p>
       )}
     </section>
   );
@@ -810,17 +825,19 @@ function GoalDialog({
           </div>
 
           <label className="flex flex-col gap-1.5">
-            <span className="text-[12px] text-white/50">Counts from</span>
+            <span className="text-[12px] text-white/50">Starts on</span>
             <input
               type="date"
               value={startedOn}
-              max={today()}
               onChange={(e) => setStartedOn(e.target.value || today())}
               className={cn(FIELD, "[color-scheme:dark]")}
             />
             <span className="text-[11px] text-white/30">
-              Nothing before this day is counted. Its own week asks only for the
-              days that were left, so starting mid-week is not a hole in it.
+              {startedOn > today()
+                ? "Set for later: it stays out of the scoring, and off the tick list, until that day."
+                : startedOn < today()
+                  ? "Backdated: the weeks since then are scored, the ones before are not."
+                  : "Nothing before this day is counted. Its own week asks only for the days that were left, so starting mid-week is not a hole in it."}
             </span>
           </label>
 
