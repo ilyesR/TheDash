@@ -18,8 +18,16 @@ export type Goal = {
   startedOn: string;
 };
 
+/**
+ * Today where you are, not in UTC. `toISOString()` would put Dubai back on
+ * yesterday's date between midnight and 04:00 — long enough to tick a goal and
+ * have it land on the wrong day.
+ */
 export function today() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
 }
 
 /**
@@ -213,7 +221,7 @@ export function dayRate(goals: Goal[], date: string): number | null {
     if (verdict === "done" || verdict === "missed") owed += 1;
   }
 
-  return owed === 0 ? null : Math.round((done / owed) * 100);
+  return owed === 0 ? null : (done / owed) * 100;
 }
 
 /**
@@ -241,5 +249,14 @@ export function weekPoints(goals: Goal[], date: string) {
 /** That points total as a percentage, or null for a week that asked nothing. */
 export function weekRate(goals: Goal[], date: string): number | null {
   const { points, boxes } = weekPoints(goals, date);
-  return boxes === 0 ? null : Math.round((points / boxes) * 100);
+  return boxes === 0 ? null : (points / boxes) * 100;
+}
+
+/**
+ * A rate for display. Rates are kept exact so they can be compared against a
+ * threshold honestly — 6 of 8 is 75, not "about 75" — but a calendar cell has
+ * no room for 74.99999, so it is shown to at most one decimal.
+ */
+export function formatRate(rate: number) {
+  return `${Math.round(rate * 10) / 10}`;
 }

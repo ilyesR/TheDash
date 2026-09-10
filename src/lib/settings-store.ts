@@ -8,10 +8,15 @@ function doc() {
   return db().collection(SETTINGS_COLLECTION).doc(DOC_ID);
 }
 
+/**
+ * Kept to two decimals rather than whole numbers: with eight goals a day is
+ * worth 12.5% a tick, so a threshold of 74.9 has to survive as 74.9. Rounding
+ * it to 75 would silently move the line past the very value you meant to clear.
+ */
 function clampPercent(value: unknown, fallback: number) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
-  return Math.min(Math.max(Math.round(n), 0), 100);
+  return Math.min(Math.max(Math.round(n * 100) / 100, 0), 100);
 }
 
 export function parseThresholds(

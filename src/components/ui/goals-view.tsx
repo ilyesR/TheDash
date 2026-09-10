@@ -24,6 +24,7 @@ import {
   band,
   dayRate,
   DEFAULT_THRESHOLDS,
+  formatRate,
   liveOn,
   today,
   weekDays,
@@ -594,7 +595,7 @@ Coloured by the share of what the day owed you that you delivered, against
                     date > now
                       ? date
                       : rate !== null
-                        ? `${date} — ${rate}%${over ? " done" : " so far"}`
+                        ? `${date} — ${formatRate(rate)}%${over ? " done" : " so far"}`
                         : rest
                           ? `${date} — rest day, within your weekly skips`
                           : date
@@ -682,7 +683,7 @@ function WeeklyCalendar({
                 )}
               </span>
               <span className="ml-auto text-[11px] tabular-nums text-white/40">
-                {rate === null ? "—" : `${rate}%`} · {points}/{boxes} pts
+                {rate === null ? "—" : `${formatRate(rate)}%`} · {points}/{boxes} pts
               </span>
             </li>
           );
@@ -995,7 +996,8 @@ function ThresholdsPanel({
         )}
       </div>
       <p className="mb-4 text-[11px] text-white/40">
-        Below the first number is red, up to the second is orange, above it is green.
+        Below the first number is red, up to the second is orange, above it is
+        green. Decimals are kept, so 74.9 lets an exact 75% through.
       </p>
 
       <div className="flex flex-col gap-4">
@@ -1013,6 +1015,7 @@ function ThresholdsPanel({
                 type="number"
                 min="0"
                 max="100"
+                step="0.1"
                 aria-label={`${label} red threshold`}
                 className="w-16 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-[12px] tabular-nums text-white outline-none focus:border-neutral-500"
               />
@@ -1029,6 +1032,7 @@ function ThresholdsPanel({
                 type="number"
                 min="0"
                 max="100"
+                step="0.1"
                 aria-label={`${label} orange threshold`}
                 className="w-16 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-[12px] tabular-nums text-white outline-none focus:border-neutral-500"
               />
