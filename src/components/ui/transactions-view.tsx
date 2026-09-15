@@ -6,7 +6,9 @@ import { Menu, Plus, Loader2 } from "lucide-react";
 import AppSidebar from "@/components/ui/app-sidebar";
 import TransactionsTable from "@/components/ui/transactions-table";
 import AddTransactionDialog from "@/components/ui/add-transaction-dialog";
+import ViewFilters from "@/components/ui/view-filters";
 import type { Transaction } from "@/lib/transaction";
+import { useViewFilter } from "@/lib/use-view-filter";
 
 export default function TransactionsView() {
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
@@ -14,6 +16,22 @@ export default function TransactionsView() {
   const [transactions, setTransactions] = React.useState<Transaction[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+
+  const { keep } = useViewFilter();
+  const visible = React.useMemo(() => transactions.filter(keep), [transactions, keep]);
+
+  /**
+   * The table only ever sees the visible rows and hands back an edited copy of
+   * them. Taking that copy as the whole list would silently drop every hidden
+   * transaction from state, so it replaces just the rows that were shown.
+   */
+  const onTableChanged = React.useCallback(
+    (next: Transaction[]) => {
+      const shown = new Set(visible.map((t) => t.id));
+      setTransactions((all) => [...all.filter((t) => !shown.has(t.id)), ...next]);
+    },
+    [visible]
+  );
 
   React.useEffect(() => {
     let cancelled = false;
@@ -61,14 +79,17 @@ export default function TransactionsView() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setDialogOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[13px] font-medium text-black transition-colors hover:bg-white/90"
-          >
-            <Plus size={15} />
-            <span className="hidden sm:inline">Add transaction</span>
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setDialogOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[13px] font-medium text-black transition-colors hover:bg-white/90"
+            >
+              <Plus size={15} />
+              <span className="hidden sm:inline">Add transaction</span>
+            </button>
+            <ViewFilters />
+          </div>
         </header>
 
         <main className="px-6 pb-10">
@@ -87,7 +108,7 @@ export default function TransactionsView() {
               Loading your transactions…
             </p>
           ) : (
-            <TransactionsTable transactions={transactions} onChanged={setTransactions} />
+            <TransactionsTable transactions={visible} onChanged={onTableChanged} />
           )}
         </main>
       </div>

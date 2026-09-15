@@ -6,23 +6,15 @@ import { Bell, Check, Loader2, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCategories, type Category } from "@/lib/use-categories";
 import { useHalalMode } from "@/lib/use-halal";
-
-/** Where the "recent" period starts. One place to change it. */
-export const PERIOD_START = "2026-09-01";
-
-export type Period = "all" | "recent";
+import { usePeriod } from "@/lib/use-view-filter";
 
 /**
- * Bell menu holding the halal filter and the list of categories it hides.
- * Nothing here deletes data: both controls only change what is displayed.
+ * Period switch plus the bell menu holding the halal filter. Both read shared
+ * stores, so the same header on any page drives every page. Nothing here
+ * deletes data: both controls only change what is displayed.
  */
-export default function ViewFilters({
-  period,
-  onPeriodChange,
-}: {
-  period: Period;
-  onPeriodChange: (next: Period) => void;
-}) {
+export default function ViewFilters() {
+  const { period, setPeriod: onPeriodChange } = usePeriod();
   const { enabled: halal, toggle: toggleHalal } = useHalalMode();
   const { categories, setCategories } = useCategories();
 

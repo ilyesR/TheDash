@@ -15,9 +15,11 @@ import {
 } from "lucide-react";
 
 import AppSidebar from "@/components/ui/app-sidebar";
+import ViewFilters from "@/components/ui/view-filters";
 import { cn } from "@/lib/utils";
 import type { Project, Transaction } from "@/lib/transaction";
 import { projectTotals } from "@/lib/transaction";
+import { useViewFilter } from "@/lib/use-view-filter";
 
 const money = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -35,6 +37,7 @@ export default function ProjectsView() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
+  const { keep } = useViewFilter();
 
   React.useEffect(() => {
     let cancelled = false;
@@ -88,14 +91,17 @@ export default function ProjectsView() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setCreating(true)}
-            className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[13px] font-medium text-black transition-colors hover:bg-white/90"
-          >
-            <Plus size={15} />
-            <span className="hidden sm:inline">New project</span>
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[13px] font-medium text-black transition-colors hover:bg-white/90"
+            >
+              <Plus size={15} />
+              <span className="hidden sm:inline">New project</span>
+            </button>
+            <ViewFilters />
+          </div>
         </header>
 
         <main className="flex flex-col gap-4 px-6 pb-10">
@@ -125,7 +131,7 @@ export default function ProjectsView() {
           ) : (
             <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {projects.map((project) => {
-                const totals = projectTotals(project, transactions);
+                const totals = projectTotals(project, transactions.filter(keep));
 
                 return (
                   <li key={project.id}>

@@ -4,6 +4,8 @@ import * as React from "react";
 import { Menu, Loader2, Check, HandCoins, Undo2, Plus, X, Trash2 } from "lucide-react";
 
 import AppSidebar from "@/components/ui/app-sidebar";
+import ViewFilters from "@/components/ui/view-filters";
+import { useViewFilter } from "@/lib/use-view-filter";
 import { cn } from "@/lib/utils";
 import type { Debt, Transaction } from "@/lib/transaction";
 import CurrencyAmount from "@/components/ui/currency-amount";
@@ -174,9 +176,17 @@ export default function PaybackView() {
     };
   }, []);
 
+  const { keep } = useViewFilter();
+
+  // Filtered here, at the read, rather than in state: settling a share still
+  // writes back the full transaction it belongs to.
   const people = React.useMemo(
-    () => groupByPerson(flatten(transactions, debts), showSettled),
-    [transactions, debts, showSettled]
+    () =>
+      groupByPerson(
+        flatten(transactions.filter(keep), debts.filter((d) => keep({ date: d.date }))),
+        showSettled
+      ),
+    [transactions, debts, showSettled, keep]
   );
 
   const totalOwed = React.useMemo(
@@ -310,6 +320,7 @@ export default function PaybackView() {
               <Plus size={15} />
               <span className="hidden sm:inline">Add a payback</span>
             </button>
+            <ViewFilters />
           </div>
         </header>
 

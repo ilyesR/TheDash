@@ -22,6 +22,8 @@ import AppSidebar from "@/components/ui/app-sidebar";
 import CurrencyAmount from "@/components/ui/currency-amount";
 import ProjectWorkspace from "@/components/ui/project-workspace";
 import ProjectAds from "@/components/ui/project-ads";
+import ViewFilters from "@/components/ui/view-filters";
+import { useViewFilter } from "@/lib/use-view-filter";
 import { cn } from "@/lib/utils";
 import type { SupportedCurrency } from "@/lib/fx";
 import type { PlannedItem, Project, Transaction } from "@/lib/transaction";
@@ -79,17 +81,22 @@ export default function ProjectDetailView({ projectId }: { projectId: string }) 
     };
   }, [projectId]);
 
+  const { keep } = useViewFilter();
+  // Filtered at the read, not in state: re-filing a transaction writes back
+  // the whole row, which must still exist in state to be found.
+  const visible = React.useMemo(() => transactions.filter(keep), [transactions, keep]);
+
   const totals = React.useMemo(
-    () => (project ? projectTotals(project, transactions) : null),
-    [project, transactions]
+    () => (project ? projectTotals(project, visible) : null),
+    [project, visible]
   );
 
   const attached = React.useMemo(
     () =>
-      transactions
+      visible
         .filter((t) => t.projectId === projectId)
         .sort((a, b) => (a.date < b.date ? 1 : -1)),
-    [transactions, projectId]
+    [visible, projectId]
   );
 
   async function save(next: Project) {
@@ -180,17 +187,20 @@ export default function ProjectDetailView({ projectId }: { projectId: string }) 
             </div>
           </div>
 
-          {project && (
-            <button
-              type="button"
-              onClick={removeProject}
-              disabled={busy}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-neutral-800 px-3 py-2 text-[13px] text-white/50 transition-colors hover:border-red-500/40 hover:text-red-400 disabled:opacity-40"
-            >
-              <Trash2 size={14} />
-              <span className="hidden sm:inline">Delete</span>
-            </button>
-          )}
+          <div className="flex shrink-0 items-center gap-3">
+            <ViewFilters />
+            {project && (
+              <button
+                type="button"
+                onClick={removeProject}
+                disabled={busy}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-neutral-800 px-3 py-2 text-[13px] text-white/50 transition-colors hover:border-red-500/40 hover:text-red-400 disabled:opacity-40"
+              >
+                <Trash2 size={14} />
+                <span className="hidden sm:inline">Delete</span>
+              </button>
+            )}
+          </div>
         </header>
 
         <main className="flex flex-col gap-4 px-6 pb-10">
@@ -288,7 +298,7 @@ export default function ProjectDetailView({ projectId }: { projectId: string }) 
               />
 
               <AttachSection
-                all={transactions}
+                all={visible}
                 projectId={projectId}
                 busy={busy}
                 onAttach={(t) => setTransactionProject(t, projectId)}

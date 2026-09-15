@@ -16,9 +16,8 @@ import type { Transaction } from "@/lib/transaction";
 import { formatOriginal, isForeign } from "@/lib/transaction";
 import AddTransactionDialog from "@/components/ui/add-transaction-dialog";
 import AppSidebar from "@/components/ui/app-sidebar";
-import ViewFilters, { PERIOD_START, type Period } from "@/components/ui/view-filters";
-import { useCategories } from "@/lib/use-categories";
-import { haramNames, useHalalMode } from "@/lib/use-halal";
+import ViewFilters from "@/components/ui/view-filters";
+import { useViewFilter } from "@/lib/use-view-filter";
 
 /** Change this (and the locale below) to switch the whole dashboard's currency. */
 const CURRENCY = "EUR";
@@ -314,22 +313,13 @@ export default function Dashboard() {
     };
   }, []);
 
-  const { enabled: halal } = useHalalMode();
-  const { categories: allCategories } = useCategories();
-  const [period, setPeriod] = React.useState<Period>("all");
+  const { keep } = useViewFilter();
 
   /**
    * One filtered list drives every panel, so a hidden category can never leak
    * into a total while staying out of a chart.
    */
-  const visible = React.useMemo(() => {
-    const hidden = haramNames(allCategories);
-    return transactions.filter((t) => {
-      if (period === "recent" && t.date < PERIOD_START) return false;
-      if (halal && hidden.has(t.category.toLowerCase())) return false;
-      return true;
-    });
-  }, [transactions, allCategories, halal, period]);
+  const visible = React.useMemo(() => transactions.filter(keep), [transactions, keep]);
 
   const hiddenCount = transactions.length - visible.length;
 
@@ -435,7 +425,7 @@ export default function Dashboard() {
               <Plus size={15} />
               <span className="hidden sm:inline">Add transaction</span>
             </button>
-            <ViewFilters period={period} onPeriodChange={setPeriod} />
+            <ViewFilters />
           </div>
         </header>
 
