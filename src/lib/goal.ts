@@ -174,6 +174,28 @@ export function allowedSkips(goal: Goal, date: string) {
   return Math.max(0, daysAvailable(goal, date) - goal.timesPerWeek);
 }
 
+/**
+ * Skips still in hand for the week `date` belongs to, counting only the days
+ * already behind it. Medication 5×/week is two rest days; Monday missed and
+ * Tuesday open leaves one, because Tuesday is still yours to take.
+ *
+ * Can go negative once the week is overspent — the caller decides whether that
+ * reads as "none left" or as how far past the line you are.
+ */
+export function skipsLeft(goal: Goal, date: string) {
+  const start = effectiveStart(goal);
+
+  let used = 0;
+  for (const day of weekDays(date)) {
+    // Today is not spent yet, and neither is anything after it.
+    if (day >= date) break;
+    if (day < start) continue;
+    if (!goal.checkIns.includes(day)) used += 1;
+  }
+
+  return allowedSkips(goal, date) - used;
+}
+
 export type DayVerdict =
   /** Ticked. */
   | "done"

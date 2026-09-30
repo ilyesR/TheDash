@@ -14,18 +14,23 @@ import {
   ChevronLeft,
   ChevronRight,
   SlidersHorizontal,
+  List,
+  LayoutGrid,
 } from "lucide-react";
 
 import AppSidebar from "@/components/ui/app-sidebar";
 import { cn } from "@/lib/utils";
+import { useGoalLayout } from "@/lib/use-goal-layout";
 import type { Goal } from "@/lib/goal";
 import {
   addDays,
+  allowedSkips,
   band,
   dayRate,
   DEFAULT_THRESHOLDS,
   formatRate,
   liveOn,
+  skipsLeft,
   today,
   weekDays,
   weekPoints,
@@ -275,6 +280,39 @@ export default function GoalsView() {
   );
 }
 
+/**
+ * How many days of this week you can still miss this goal without owing
+ * anything. The day being viewed is not spent yet, so it never counts itself.
+ */
+function SkipsChip({ goal, date }: { goal: Goal; date: string }) {
+  const allowed = allowedSkips(goal, date);
+  const left = skipsLeft(goal, date);
+
+  const [text, tone] =
+    allowed === 0
+      ? ["every day", "border-neutral-700 bg-neutral-900 text-white/45"]
+      : left > 0
+        ? [
+            `${left} off day${left === 1 ? "" : "s"} left`,
+            "border-neutral-700 bg-neutral-900 text-white/55",
+          ]
+        : left === 0
+          ? ["no off days left", "border-amber-500/30 bg-amber-500/10 text-amber-300"]
+          : [
+              `${-left} missed`,
+              "border-red-500/30 bg-red-500/10 text-red-300",
+            ];
+
+  return (
+    <span
+      title={`${goal.timesPerWeek}× a week — ${allowed} off day${allowed === 1 ? "" : "s"} allowed`}
+      className={cn("rounded-md border px-1.5 py-0.5 text-[10px] tabular-nums", tone)}
+    >
+      {text}
+    </span>
+  );
+}
+
 function DayPanel({
   goals,
   pending,
@@ -297,6 +335,7 @@ function DayPanel({
   onDelete: (g: Goal) => void;
   onDateChange: (next: string) => void;
 }) {
+  const { layout, setLayout } = useGoalLayout();
   const allDone = goals.length > 0 && goals.every((g) => g.checkIns.includes(now));
   const isToday = now === realToday;
 
@@ -347,16 +386,44 @@ function DayPanel({
             </button>
           )}
         </div>
-        <span
-          className={cn(
-            "rounded-md border px-2 py-1 text-[11px]",
-            allDone
-              ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-              : "border-neutral-700 text-white/45"
-          )}
-        >
-          {goals.filter((g) => g.checkIns.includes(now)).length} / {goals.length} ticked
-        </span>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-lg border border-neutral-800 bg-neutral-900/70 p-0.5">
+            {(
+              [
+                { key: "list" as const, Icon: List, label: "List view" },
+                { key: "cards" as const, Icon: LayoutGrid, label: "Card view" },
+              ]
+            ).map(({ key, Icon, label }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setLayout(key)}
+                aria-pressed={layout === key}
+                aria-label={label}
+                title={label}
+                className={cn(
+                  "rounded-md px-2 py-1.5 transition-colors",
+                  layout === key
+                    ? "bg-neutral-800 text-white"
+                    : "text-white/40 hover:text-white"
+                )}
+              >
+                <Icon size={14} />
+              </button>
+            ))}
+          </div>
+
+          <span
+            className={cn(
+              "rounded-md border px-2 py-1 text-[11px]",
+              allDone
+                ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+                : "border-neutral-700 text-white/45"
+            )}
+          >
+            {goals.filter((g) => g.checkIns.includes(now)).length} / {goals.length} ticked
+          </span>
+        </div>
       </div>
 
       {goals.length === 0 ? (
@@ -365,6 +432,87 @@ function DayPanel({
             ? `Nothing running on this day — ${pending} ${pending === 1 ? "goal starts" : "goals start"} later.`
             : "Nothing published yet — publish a goal to start ticking."}
         </p>
+      ) : layout === "cards" ? (
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {goals.map((goal) => {
+            const ticked = goal.checkIns.includes(now);
+
+            return (
+              <li key={goal.id} className="group relative">
+                {/* The card body is the tick target; edit and delete sit
+                    outside it, since a button cannot nest inside a button. */}
+                <button
+                  type="button"
+                  onClick={() => onToggle(goal)}
+                  disabled={busy !== null}
+                  aria-pressed={ticked}
+                  aria-label={`${ticked ? "Untick" : "Tick"} ${goal.title} for ${now}`}
+                  className={cn(
+                    "flex h-full w-full flex-col items-start gap-2 rounded-xl border p-4 text-left transition-colors disabled:opacity-60",
+                    ticked
+                      ? "border-emerald-500/40 bg-emerald-500/10"
+                      : "border-neutral-800 bg-neutral-900/50 hover:border-neutral-600"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "grid size-7 shrink-0 place-items-center rounded-md border transition-colors",
+                      ticked
+                        ? "border-emerald-500 bg-emerald-500/20 text-emerald-400"
+                        : "border-neutral-700"
+                    )}
+                  >
+                    {busy === goal.id ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : ticked ? (
+                      <Check size={15} />
+                    ) : null}
+                  </span>
+
+                  <span
+                    className={cn(
+                      "pr-12 text-[14px] font-medium leading-snug",
+                      ticked ? "text-white/50 line-through" : "text-white"
+                    )}
+                  >
+                    {goal.title}
+                  </span>
+
+                  <SkipsChip goal={goal} date={now} />
+
+                  {goal.rules.length > 0 && (
+                    <span className="mt-1 flex flex-col gap-0.5">
+                      {goal.rules.map((rule, i) => (
+                        <span key={i} className="text-[11px] text-white/40">
+                          — {rule}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </button>
+
+                <span className="absolute right-3 top-3 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onEdit(goal)}
+                    aria-label={`Edit ${goal.title}`}
+                    className="rounded-md p-1 text-white/25 opacity-0 transition-all hover:text-white focus-visible:opacity-100 group-hover:opacity-100"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(goal)}
+                    aria-label={`Delete ${goal.title}`}
+                    className="rounded-md p-1 text-white/25 opacity-0 transition-all hover:text-red-400 focus-visible:opacity-100 group-hover:opacity-100"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       ) : (
         <ul className="flex flex-col">
           {goals.map((goal) => {
@@ -396,13 +544,16 @@ function DayPanel({
                 </button>
 
                 <span className="flex min-w-0 flex-1 flex-col leading-tight">
-                  <span
-                    className={cn(
-                      "text-[14px]",
-                      ticked ? "text-white/50 line-through" : "text-white"
-                    )}
-                  >
-                    {goal.title}
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={cn(
+                        "text-[14px]",
+                        ticked ? "text-white/50 line-through" : "text-white"
+                      )}
+                    >
+                      {goal.title}
+                    </span>
+                    <SkipsChip goal={goal} date={now} />
                   </span>
 
                   {goal.rules.length > 0 && (
