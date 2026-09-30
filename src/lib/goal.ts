@@ -275,6 +275,50 @@ export function weekRate(goals: Goal[], date: string): number | null {
 }
 
 /**
+ * Days in a row, back from today, on which nothing was missed. A day you were
+ * entitled to skip keeps the run alive — that is the whole point of the off
+ * days — so this counts promises kept, not ticks.
+ *
+ * Today is still open: finishing it extends the run, but leaving a goal
+ * outstanding does not end it while you can still do it.
+ */
+export function cleanStreak(goals: Goal[], from: string): number {
+  let count = 0;
+
+  const liveToday = liveOn(goals, from);
+  if (liveToday.length > 0 && liveToday.every((g) => g.checkIns.includes(from))) {
+    count += 1;
+  }
+
+  let date = addDays(from, -1);
+  // A year is far more history than the calendars show; the loop is bounded so
+  // a goal dated long ago cannot hang the page.
+  for (let i = 0; i < 366; i += 1) {
+    const live = liveOn(goals, date);
+    if (live.length === 0) break;
+    if (live.some((goal) => dayVerdict(goal, date) === "missed")) break;
+    count += 1;
+    date = addDays(date, -1);
+  }
+
+  return count;
+}
+
+/** Rates of the finished weeks before `from`, most recent first. */
+export function pastWeekRates(goals: Goal[], from: string, weeks: number) {
+  const rates: number[] = [];
+  let monday = addDays(weekStart(from), -7);
+
+  for (let i = 0; i < weeks; i += 1) {
+    const rate = weekRate(goals, monday);
+    if (rate !== null) rates.push(rate);
+    monday = addDays(monday, -7);
+  }
+
+  return rates;
+}
+
+/**
  * A rate for display. Rates are kept exact so they can be compared against a
  * threshold honestly — 6 of 8 is 75, not "about 75" — but a calendar cell has
  * no room for 74.99999, so it is shown to at most one decimal.

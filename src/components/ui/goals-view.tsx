@@ -27,11 +27,15 @@ import {
   addDays,
   allowedSkips,
   band,
+  boxesFor,
+  cleanStreak,
+  countInWeek,
   dayRate,
   DEFAULT_THRESHOLDS,
   effectiveStart,
   formatRate,
   liveOn,
+  pastWeekRates,
   skipsLeft,
   today,
   weekDays,
@@ -236,7 +240,8 @@ export default function GoalsView() {
               </p>
             </div>
           ) : (
-            <>
+            <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+              <div className="flex min-w-0 flex-col gap-4">
               <DayPanel
                 // Only what was actually running that day is tickable: a goal
                 // set to start next Monday has nothing to say about today.
@@ -265,7 +270,7 @@ export default function GoalsView() {
                 />
               )}
 
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
                 <DailyCalendar
                   goals={tracked}
                   only={only}
@@ -277,7 +282,17 @@ export default function GoalsView() {
                 />
                 <WeeklyCalendar goals={tracked} today={now} thresholds={thresholds} />
               </div>
-            </>
+              </div>
+
+              <div className="xl:sticky xl:top-4">
+                <StatsPanel
+                  goals={tracked}
+                  only={only}
+                  today={now}
+                  thresholds={thresholds}
+                />
+              </div>
+            </div>
           )}
         </main>
       </div>
@@ -739,6 +754,142 @@ function DraftsPanel({
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5 rounded-lg border border-neutral-800 bg-neutral-900/50 px-3 py-2.5">
+      <span className="text-[10px] uppercase tracking-wide text-white/35">{label}</span>
+      <span className={cn("text-[18px] font-semibold tabular-nums", tone ?? "text-white")}>
+        {value}
+      </span>
+      {hint && <span className="text-[11px] text-white/35">{hint}</span>}
+    </div>
+  );
+}
+
+const TONE_TEXT = {
+  green: "text-emerald-400",
+  orange: "text-orange-400",
+  red: "text-red-400",
+} as const;
+
+/**
+ * The numbers behind the calendars. Follows the same goal the calendars do, so
+ * focusing one never leaves a total here counting the others.
+ */
+function StatsPanel({
+  goals,
+  only,
+  today: now,
+  thresholds,
+}: {
+  goals: Goal[];
+  only: Goal | null;
+  today: string;
+  thresholds: Thresholds;
+}) {
+  const { points, boxes } = weekPoints(goals, now);
+  const rate = weekRate(goals, now);
+  const streak = cleanStreak(goals, now);
+
+  const past = pastWeekRates(goals, now, 4);
+  const average =
+    past.length === 0
+      ? null
+      : past.reduce((sum, r) => sum + r, 0) / past.length;
+
+  const liveToday = liveOn(goals, now);
+  const tickedToday = liveToday.filter((g) => g.checkIns.includes(now)).length;
+
+  return (
+    <section className="flex flex-col gap-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
+      <h2 className="text-sm font-semibold text-white">
+        Stats{only && <span className="text-white/45"> · {only.title}</span>}
+      </h2>
+
+      <div className="grid grid-cols-2 gap-2">
+        <Stat
+          label="Today"
+          value={`${tickedToday}/${liveToday.length}`}
+          hint="ticked"
+        />
+        <Stat
+          label="Streak"
+          value={String(streak)}
+          hint={streak === 1 ? "day, no miss" : "days, no miss"}
+          tone={streak > 0 ? "text-emerald-400" : undefined}
+        />
+        <Stat
+          label="This week"
+          value={rate === null ? "—" : `${formatRate(rate)}%`}
+          hint={`${points}/${boxes} pts`}
+          tone={
+            rate === null
+              ? undefined
+              : TONE_TEXT[band(rate, thresholds.weekRed, thresholds.weekOrange)]
+          }
+        />
+        <Stat
+          label="Last 4 weeks"
+          value={average === null ? "—" : `${formatRate(average)}%`}
+          hint={
+            past.length === 0
+              ? "no finished week yet"
+              : `over ${past.length} week${past.length === 1 ? "" : "s"}`
+          }
+          tone={
+            average === null
+              ? undefined
+              : TONE_TEXT[band(average, thresholds.weekRed, thresholds.weekOrange)]
+          }
+        />
+      </div>
+
+      <div className="mt-1 flex flex-col gap-2">
+        <span className="text-[11px] font-medium text-white/50">This week, per goal</span>
+        {goals.map((goal) => {
+          const done = countInWeek(goal, now);
+          const target = boxesFor(goal, now);
+          const hit = done >= target;
+
+          return (
+            <div key={goal.id} className="flex flex-col gap-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="truncate text-[12px] text-white/70">{goal.title}</span>
+                <span
+                  className={cn(
+                    "shrink-0 text-[11px] tabular-nums",
+                    hit ? "text-emerald-400" : "text-white/40"
+                  )}
+                >
+                  {Math.min(done, target)}/{target}
+                </span>
+              </div>
+              <div className="h-1 overflow-hidden rounded-full bg-neutral-800">
+                <div
+                  className={cn("h-full rounded-full", hit ? "bg-emerald-500" : "bg-white/35")}
+                  style={{
+                    width: `${target === 0 ? 0 : Math.min(100, (done / target) * 100)}%`,
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }
