@@ -28,6 +28,7 @@ import {
   band,
   dayRate,
   DEFAULT_THRESHOLDS,
+  effectiveStart,
   formatRate,
   liveOn,
   skipsLeft,
@@ -93,8 +94,18 @@ export default function GoalsView() {
     };
   }, []);
 
+  /** Set to one goal's id to read the calendars for that goal alone. */
+  const [focus, setFocus] = React.useState<string | null>(null);
+
   /** Only published goals are tracked; drafts stay out of the calendars. */
   const published = React.useMemo(() => goals.filter((g) => g.published), [goals]);
+
+  // A goal you deleted or unpublished must not keep the calendars to itself.
+  const only = React.useMemo(
+    () => published.find((g) => g.id === focus) ?? null,
+    [published, focus]
+  );
+  const tracked = only ? [only] : published;
   const drafts = React.useMemo(() => goals.filter((g) => !g.published), [goals]);
 
   async function toggleDay(goal: Goal) {
@@ -249,15 +260,44 @@ export default function GoalsView() {
                 />
               )}
 
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[12px] text-white/45">Calendars show</span>
+                <select
+                  value={focus ?? "all"}
+                  onChange={(e) =>
+                    setFocus(e.target.value === "all" ? null : e.target.value)
+                  }
+                  aria-label="Which goal the calendars show"
+                  className="rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-[12px] text-white outline-none focus:border-neutral-500"
+                >
+                  <option value="all">All goals</option>
+                  {published.map((goal) => (
+                    <option key={goal.id} value={goal.id}>
+                      {goal.title}
+                    </option>
+                  ))}
+                </select>
+                {only && (
+                  <button
+                    type="button"
+                    onClick={() => setFocus(null)}
+                    className="rounded-lg border border-neutral-800 px-2.5 py-1.5 text-[12px] text-white/50 transition-colors hover:text-white"
+                  >
+                    Back to all
+                  </button>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                 <DailyCalendar
-                  goals={published}
+                  goals={tracked}
+                  only={only}
                   today={now}
                   selected={selected}
                   onSelect={setSelected}
                   thresholds={thresholds}
                 />
-                <WeeklyCalendar goals={published} today={now} thresholds={thresholds} />
+                <WeeklyCalendar goals={tracked} today={now} thresholds={thresholds} />
               </div>
             </>
           )}
@@ -672,15 +712,75 @@ function DraftsPanel({
   );
 }
 
+/** Exactly one background class per cell, so none can win over another. */
+const CELL_FUTURE = "bg-neutral-800/40";
+const CELL_NOT_RUNNING = "bg-black";
+
+/**
+ * One goal on its own: done or not, with nothing averaged. Today stays neutral
+ * until ticked — it is not a failure while you can still do it.
+ */
+function oneGoalCell(goal: Goal, date: string, now: string) {
+  if (date > now) return { bg: CELL_FUTURE, title: date };
+  if (effectiveStart(goal) > date) {
+    return { bg: CELL_NOT_RUNNING, title: `${date} — not started yet` };
+  }
+  if (goal.checkIns.includes(date)) {
+    return { bg: "bg-emerald-500/70", title: `${date} — done` };
+  }
+  return date === now
+    ? { bg: CELL_FUTURE, title: `${date} — not yet` }
+    : { bg: "bg-red-500/60", title: `${date} — not done` };
+}
+
+/** Every goal at once: the day's completion rate against your thresholds. */
+function allGoalsCell(
+  goals: Goal[],
+  date: string,
+  now: string,
+  thresholds: Thresholds
+) {
+  if (date > now) return { bg: CELL_FUTURE, title: date };
+
+  // A day still running has not had its chance yet, so it carries no verdict.
+  const over = date < now;
+  const rate = dayRate(goals, date);
+
+  if (rate === null) {
+    // Owed nothing because every goal was resting, which is not the same as a
+    // day before any goal existed.
+    return liveOn(goals, date).length > 0
+      ? { bg: "bg-neutral-600/50", title: `${date} — rest day, within your weekly skips` }
+      : { bg: CELL_NOT_RUNNING, title: date };
+  }
+
+  const title = `${date} — ${formatRate(rate)}%${over ? " done" : " so far"}`;
+  if (!over) return { bg: CELL_FUTURE, title };
+
+  const tone = band(rate, thresholds.dayRed, thresholds.dayOrange);
+  return {
+    bg:
+      tone === "green"
+        ? "bg-emerald-500/70"
+        : tone === "orange"
+          ? "bg-orange-500/70"
+          : "bg-red-500/60",
+    title,
+  };
+}
+
 /** Monday-first grid, oldest week at the top, one row per week. */
 function DailyCalendar({
   goals,
+  only,
   today: now,
   selected,
   onSelect,
   thresholds,
 }: {
   goals: Goal[];
+  /** Set when you are looking at a single goal instead of all of them. */
+  only: Goal | null;
   today: string;
   selected: string;
   onSelect: (date: string) => void;
@@ -697,11 +797,22 @@ function DailyCalendar({
     <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
       <h2 className="mb-1 text-sm font-semibold text-white">Daily</h2>
       <p className="mb-4 text-[11px] text-white/40">
-Coloured by the share of what the day owed you that you delivered, against
-        the thresholds you set. A goal set to 5×/week may be skipped twice before
-        a miss counts — earlier skips leave the sum instead of dragging it down.
-        Only finished days are scored; grey is a day that owed nothing, black a
-        day before any goal existed. Click a day to fix it up.
+{only ? (
+          <>
+            Just <span className="text-white/70">{only.title}</span>: green the days
+            you ticked it, red the days you did not. Today waits until you tick it,
+            and black is before it started.
+          </>
+        ) : (
+          <>
+            Coloured by the share of what the day owed you that you delivered,
+            against the thresholds you set. A goal set to 5×/week may be skipped
+            twice before a miss counts — earlier skips leave the sum instead of
+            dragging it down. Only finished days are scored; grey is a day that
+            owed nothing, black a day before any goal existed. Click a day to fix
+            it up.
+          </>
+        )}
       </p>
 
       <div className="flex flex-col gap-1">
@@ -723,17 +834,9 @@ Coloured by the share of what the day owed you that you delivered, against
               {days[0].slice(5)}
             </span>
             {days.map((date) => {
-              // A day still running has not had its chance yet, so it carries no
-              // verdict: today stays neutral until it is over.
-              const over = date < now;
-              const rate = dayRate(goals, date);
-              const tone =
-                over && rate !== null
-                  ? band(rate, thresholds.dayRed, thresholds.dayOrange)
-                  : null;
-              // A day that owed nothing because every goal was resting is not
-              // the same as a day before any goal existed.
-              const rest = rate === null && liveOn(goals, date).length > 0;
+              const { bg, title } = only
+                ? oneGoalCell(only, date, now)
+                : allGoalsCell(goals, date, now, thresholds);
 
               return (
                 <button
@@ -741,27 +844,11 @@ Coloured by the share of what the day owed you that you delivered, against
                   type="button"
                   onClick={() => onSelect(date)}
                   disabled={date > now}
-                  title={
-                    // A day that has not arrived has no progress worth quoting.
-                    date > now
-                      ? date
-                      : rate !== null
-                        ? `${date} — ${formatRate(rate)}%${over ? " done" : " so far"}`
-                        : rest
-                          ? `${date} — rest day, within your weekly skips`
-                          : date
-                  }
+                  title={title}
                   aria-label={`Show ${date}`}
                   className={cn(
                     "size-6 rounded transition-transform enabled:hover:scale-110",
-                    tone === "green" && "bg-emerald-500/70",
-                    tone === "orange" && "bg-orange-500/70",
-                    tone === "red" && "bg-red-500/60",
-                    // Owed nothing: resting reads lighter than a day before any
-                    // goal existed, which stays black.
-                    over && rest && "bg-neutral-600/50",
-                    over && rate === null && !rest && "bg-black",
-                    !over && "bg-neutral-800/40",
+                    bg,
                     date === now && "ring-1 ring-white/40",
                     date === selected && "ring-2 ring-white"
                   )}

@@ -6,7 +6,7 @@ export type GoalLayout = "list" | "cards";
 
 const STORAGE_KEY = "thedash:goal-layout";
 
-const DEFAULT_LAYOUT: GoalLayout = "list";
+const DEFAULT_LAYOUT: GoalLayout = "cards";
 
 /** Same shared-store shape as the other view preferences. */
 const listeners = new Set<() => void>();
