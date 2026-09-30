@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   SlidersHorizontal,
+  CalendarRange,
   List,
   LayoutGrid,
 } from "lucide-react";
@@ -241,6 +242,10 @@ export default function GoalsView() {
                 // set to start next Monday has nothing to say about today.
                 goals={liveOn(published, selected)}
                 pending={published.length - liveOn(published, selected).length}
+                focus={focus}
+                onFocus={(goal) =>
+                  setFocus((current) => (current === goal.id ? null : goal.id))
+                }
                 date={selected}
                 today={now}
                 busy={busy}
@@ -260,38 +265,11 @@ export default function GoalsView() {
                 />
               )}
 
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[12px] text-white/45">Calendars show</span>
-                <select
-                  value={focus ?? "all"}
-                  onChange={(e) =>
-                    setFocus(e.target.value === "all" ? null : e.target.value)
-                  }
-                  aria-label="Which goal the calendars show"
-                  className="rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-[12px] text-white outline-none focus:border-neutral-500"
-                >
-                  <option value="all">All goals</option>
-                  {published.map((goal) => (
-                    <option key={goal.id} value={goal.id}>
-                      {goal.title}
-                    </option>
-                  ))}
-                </select>
-                {only && (
-                  <button
-                    type="button"
-                    onClick={() => setFocus(null)}
-                    className="rounded-lg border border-neutral-800 px-2.5 py-1.5 text-[12px] text-white/50 transition-colors hover:text-white"
-                  >
-                    Back to all
-                  </button>
-                )}
-              </div>
-
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                 <DailyCalendar
                   goals={tracked}
                   only={only}
+                  onClearOnly={() => setFocus(null)}
                   today={now}
                   selected={selected}
                   onSelect={setSelected}
@@ -359,6 +337,8 @@ function DayPanel({
   date: now,
   today: realToday,
   busy,
+  focus,
+  onFocus,
   onToggle,
   onEdit,
   onDelete,
@@ -370,6 +350,9 @@ function DayPanel({
   date: string;
   today: string;
   busy: string | null;
+  /** Id of the goal the calendars are following, if any. */
+  focus: string | null;
+  onFocus: (g: Goal) => void;
   onToggle: (g: Goal) => void;
   onEdit: (g: Goal) => void;
   onDelete: (g: Goal) => void;
@@ -491,7 +474,9 @@ function DayPanel({
                     "flex h-full w-full flex-col items-start gap-2 rounded-xl border p-4 text-left transition-colors disabled:opacity-60",
                     ticked
                       ? "border-emerald-500/40 bg-emerald-500/10"
-                      : "border-neutral-800 bg-neutral-900/50 hover:border-neutral-600"
+                      : "border-neutral-800 bg-neutral-900/50 hover:border-neutral-600",
+                    // The calendars are reading this one; say so on the card.
+                    focus === goal.id && "ring-2 ring-white/60"
                   )}
                 >
                   <span
@@ -532,6 +517,29 @@ function DayPanel({
                 </button>
 
                 <span className="absolute right-3 top-3 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onFocus(goal)}
+                    aria-pressed={focus === goal.id}
+                    aria-label={
+                      focus === goal.id
+                        ? `Show all goals in the calendars`
+                        : `Show only ${goal.title} in the calendars`
+                    }
+                    title={
+                      focus === goal.id
+                        ? "Calendars are showing this goal — click to show all"
+                        : "Show this goal alone in the calendars"
+                    }
+                    className={cn(
+                      "rounded-md p-1 transition-all",
+                      focus === goal.id
+                        ? "text-white opacity-100"
+                        : "text-white/25 opacity-0 hover:text-white focus-visible:opacity-100 group-hover:opacity-100"
+                    )}
+                  >
+                    <CalendarRange size={13} />
+                  </button>
                   <button
                     type="button"
                     onClick={() => onEdit(goal)}
@@ -608,6 +616,29 @@ function DayPanel({
                 </span>
 
                 <span className="mt-0.5 flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onFocus(goal)}
+                    aria-pressed={focus === goal.id}
+                    aria-label={
+                      focus === goal.id
+                        ? `Show all goals in the calendars`
+                        : `Show only ${goal.title} in the calendars`
+                    }
+                    title={
+                      focus === goal.id
+                        ? "Calendars are showing this goal — click to show all"
+                        : "Show this goal alone in the calendars"
+                    }
+                    className={cn(
+                      "rounded-md p-1 transition-all",
+                      focus === goal.id
+                        ? "text-white opacity-100"
+                        : "text-white/25 opacity-0 hover:text-white focus-visible:opacity-100 group-hover:opacity-100"
+                    )}
+                  >
+                    <CalendarRange size={13} />
+                  </button>
                   <button
                     type="button"
                     onClick={() => onEdit(goal)}
@@ -773,6 +804,7 @@ function allGoalsCell(
 function DailyCalendar({
   goals,
   only,
+  onClearOnly,
   today: now,
   selected,
   onSelect,
@@ -781,6 +813,7 @@ function DailyCalendar({
   goals: Goal[];
   /** Set when you are looking at a single goal instead of all of them. */
   only: Goal | null;
+  onClearOnly: () => void;
   today: string;
   selected: string;
   onSelect: (date: string) => void;
@@ -795,7 +828,20 @@ function DailyCalendar({
 
   return (
     <section className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
-      <h2 className="mb-1 text-sm font-semibold text-white">Daily</h2>
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-white">
+          Daily{only && <span className="text-white/45"> · {only.title}</span>}
+        </h2>
+        {only && (
+          <button
+            type="button"
+            onClick={onClearOnly}
+            className="rounded-md border border-neutral-700 px-2 py-1 text-[11px] text-white/60 transition-colors hover:text-white"
+          >
+            Show all goals
+          </button>
+        )}
+      </div>
       <p className="mb-4 text-[11px] text-white/40">
 {only ? (
           <>
