@@ -813,6 +813,9 @@ function StatsPanel({
 
   const liveToday = liveOn(goals, now);
   const tickedToday = liveToday.filter((g) => g.checkIns.includes(now)).length;
+  // The same figure the daily calendar quotes: excused skips leave the sum
+  // rather than counting against you.
+  const todayRate = dayRate(goals, now);
 
   return (
     <section className="flex flex-col gap-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
@@ -823,8 +826,12 @@ function StatsPanel({
       <div className="grid grid-cols-2 gap-2">
         <Stat
           label="Today"
-          value={`${tickedToday}/${liveToday.length}`}
-          hint="ticked"
+          value={todayRate === null ? "—" : `${formatRate(todayRate)}%`}
+          hint={
+            todayRate === null
+              ? "rest day"
+              : `${tickedToday}/${liveToday.length} ticked, so far`
+          }
         />
         <Stat
           label="Streak"
