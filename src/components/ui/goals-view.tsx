@@ -832,6 +832,13 @@ function StatsPanel({
               ? "rest day"
               : `${tickedToday}/${liveToday.length} ticked, so far`
           }
+          // The colour the day would land on if it ended right now. It is a
+          // forecast, not a verdict: the calendar still leaves today neutral.
+          tone={
+            todayRate === null
+              ? undefined
+              : TONE_TEXT[band(todayRate, thresholds.dayRed, thresholds.dayOrange)]
+          }
         />
         <Stat
           label="Streak"
